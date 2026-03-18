@@ -1,0 +1,45 @@
+# subnet-recon configuration
+
+[scan]
+# Probe method: "icmp" (requires root) or "tcp" (no root, slower)
+method = "icmp"
+
+# Timeout per probe in milliseconds
+timeout_ms = 1000
+
+# Number of worker threads (0 = use all available cores)
+threads = 0
+
+# Maximum probes per second across all threads (0 = unlimited)
+rate_limit = 0
+
+# Randomize IP order before scanning
+# "global" = shuffle all IPs from all subnets together
+# "per_subnet" = shuffle within each subnet, then interleave
+# "none" = sequential order
+randomize = "global"
+
+# TCP port to probe when method = "tcp"
+tcp_port = 80
+
+[output]
+# Write reachable hosts to file (empty string = stdout only)
+file = ""
+
+# Output format: "plain" (one IP per line) or "json"
+format = "plain"
+
+# Include unreachable hosts in output
+include_unreachable = false
+
+[[subnets]]
+cidr = "192.168.0.0/16"
+label = "Private Class C"
+
+[[subnets]]
+cidr = "172.16.0.0/12"
+label = "Private Class B"
+
+[[subnets]]
+cidr = "10.0.0.0/8"
+label = "Private Class A"

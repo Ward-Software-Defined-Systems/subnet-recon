@@ -1,0 +1,12 @@
+[scan]
+method = "tcp"
+timeout_ms = 500
+threads = 4
+tcp_port = 80
+
+[output]
+format = "json"
+
+[[subnets]]
+cidr = "127.0.0.0/30"
+label = "Loopback test"
