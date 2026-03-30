@@ -13,7 +13,9 @@ socket2 = { version = "0.5", features = ["all"] }
 indicatif = "0.17"
 clap = { version = "4", features = ["derive"] }
 ipnet = "2"
+hickory-resolver = "0.25"
 thiserror = "2"
+tokio = { version = "1", features = ["rt"] }
 num_cpus = "1.16"
 parking_lot = "0.12"
 libc = "0.2"

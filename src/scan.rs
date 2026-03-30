@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -10,13 +10,14 @@ use rand::thread_rng;
 use rayon::prelude::*;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
-use crate::config::{ProbeMethod, RandomizeMode, ScanConfig, SubnetEntry};
+use crate::config::{DnsConfig, ProbeMethod, RandomizeMode, ScanConfig, SubnetEntry};
 use crate::progress::ProgressReporter;
 
 #[derive(Debug, Clone)]
 pub struct ScanTarget {
     pub ip: Ipv4Addr,
     pub subnet_index: usize,
+    pub hostname: Option<String>,
 }
 
 pub struct ScanResult {
@@ -37,6 +38,7 @@ pub fn build_scan_targets(subnets: &[SubnetEntry], mode: &RandomizeMode) -> Vec<
                     net.hosts().map(move |ip| ScanTarget {
                         ip,
                         subnet_index: idx,
+                        hostname: None,
                     })
                 })
                 .collect();
@@ -54,6 +56,7 @@ pub fn build_scan_targets(subnets: &[SubnetEntry], mode: &RandomizeMode) -> Vec<
                         .map(|ip| ScanTarget {
                             ip,
                             subnet_index: idx,
+                            hostname: None,
                         })
                         .collect();
                     targets.shuffle(&mut thread_rng());
@@ -81,6 +84,7 @@ pub fn build_scan_targets(subnets: &[SubnetEntry], mode: &RandomizeMode) -> Vec<
                 net.hosts().map(move |ip| ScanTarget {
                     ip,
                     subnet_index: idx,
+                    hostname: None,
                 })
             })
             .collect(),
@@ -240,6 +244,57 @@ impl RateLimiter {
             std::thread::sleep(Duration::from_micros(100));
         }
     }
+}
+
+/// Perform reverse DNS lookups on reachable hosts in parallel.
+pub fn resolve_hostnames(targets: &mut [ScanTarget], dns_config: &DnsConfig) {
+    use hickory_resolver::config::{
+        NameServerConfigGroup, ResolverConfig, ResolverOpts,
+    };
+    use hickory_resolver::TokioResolver;
+
+    let mut opts = ResolverOpts::default();
+    opts.timeout = Duration::from_millis(dns_config.timeout_ms);
+
+    let resolver = if dns_config.servers.is_empty() {
+        TokioResolver::builder_tokio()
+            .expect("Failed to create DNS resolver")
+            .with_options(opts)
+            .build()
+    } else {
+        let ips: Vec<IpAddr> = dns_config
+            .servers
+            .iter()
+            .map(|s| s.parse().unwrap()) // validated in config
+            .collect();
+        let name_servers = NameServerConfigGroup::from_ips_clear(&ips, 53, true);
+        use hickory_resolver::name_server::TokioConnectionProvider;
+        let config = ResolverConfig::from_parts(None, vec![], name_servers);
+        TokioResolver::builder_with_config(config, TokioConnectionProvider::default())
+            .with_options(opts)
+            .build()
+    };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build tokio runtime for DNS");
+
+    let resolver = Arc::new(resolver);
+    let rt = Arc::new(rt);
+
+    targets.par_iter_mut().for_each(|target| {
+        let ip = IpAddr::V4(target.ip);
+        let resolver = Arc::clone(&resolver);
+        let rt = Arc::clone(&rt);
+        target.hostname = rt.block_on(async move {
+            resolver.reverse_lookup(ip).await.ok().and_then(|lookup| {
+                lookup.iter().next().map(|name| {
+                    name.to_string().trim_end_matches('.').to_string()
+                })
+            })
+        });
+    });
 }
 
 /// Execute the scan across all targets using a rayon thread pool.

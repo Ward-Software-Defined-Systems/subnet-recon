@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -29,6 +30,8 @@ pub struct Config {
     pub scan: ScanConfig,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(default)]
+    pub dns: DnsConfig,
     pub subnets: Vec<SubnetEntry>,
 }
 
@@ -110,6 +113,30 @@ pub enum OutputFormat {
     Json,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DnsConfig {
+    /// DNS server addresses (e.g. "8.8.8.8", "1.1.1.1"). Empty = system default.
+    #[serde(default)]
+    pub servers: Vec<String>,
+
+    /// DNS query timeout in milliseconds.
+    #[serde(default = "default_dns_timeout")]
+    pub timeout_ms: u64,
+}
+
+impl Default for DnsConfig {
+    fn default() -> Self {
+        Self {
+            servers: Vec::new(),
+            timeout_ms: default_dns_timeout(),
+        }
+    }
+}
+
+fn default_dns_timeout() -> u64 {
+    3000
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct SubnetEntry {
     pub cidr: String,
@@ -189,7 +216,23 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
         });
     }
 
-    // Validation 6: Resolve threads=0 to num_cpus
+    // Validation 6: DNS server addresses must be valid IPs
+    for addr in &config.dns.servers {
+        addr.parse::<IpAddr>().map_err(|_| ConfigError::InvalidValue {
+            field: "dns.servers".into(),
+            reason: format!("'{}' is not a valid IP address", addr),
+        })?;
+    }
+
+    // Validation 7: dns.timeout_ms > 0
+    if config.dns.timeout_ms == 0 {
+        return Err(ConfigError::InvalidValue {
+            field: "dns.timeout_ms".into(),
+            reason: "must be greater than 0".into(),
+        });
+    }
+
+    // Validation 8: Resolve threads=0 to num_cpus
     if config.scan.threads == 0 {
         config.scan.threads = num_cpus::get();
     }

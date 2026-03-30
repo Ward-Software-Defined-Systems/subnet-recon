@@ -10,7 +10,7 @@ use ipnet::Ipv4Net;
 
 use config::{Cli, load_config};
 use progress::{ProgressReporter, SilentProgress, TerminalProgress};
-use scan::{build_scan_targets, run_scan};
+use scan::{build_scan_targets, resolve_hostnames, run_scan};
 
 fn main() {
     let cli = Cli::parse();
@@ -68,10 +68,16 @@ fn main() {
     };
 
     // Run scan
-    let result = run_scan(targets, &config.scan, &progress);
+    let mut result = run_scan(targets, &config.scan, &progress);
 
     // Finish progress display
     progress.finish();
+
+    // Reverse DNS lookup on reachable hosts
+    if !result.reachable.is_empty() {
+        eprintln!("\nResolving hostnames for {} reachable hosts...", result.reachable.len());
+        resolve_hostnames(&mut result.reachable, &config.dns);
+    }
 
     // Write results
     if let Err(e) = results::write_results(&result, &config) {

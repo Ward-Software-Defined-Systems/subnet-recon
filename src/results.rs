@@ -26,7 +26,11 @@ pub fn write_results(result: &ScanResult, config: &Config) -> std::io::Result<()
 
 fn write_plain(writer: &mut dyn Write, targets: &[ScanTarget]) -> std::io::Result<()> {
     for target in targets {
-        writeln!(writer, "{}", target.ip)?;
+        if let Some(ref hostname) = target.hostname {
+            writeln!(writer, "{}\t{}", target.ip, hostname)?;
+        } else {
+            writeln!(writer, "{}", target.ip)?;
+        }
     }
     Ok(())
 }
@@ -43,11 +47,15 @@ fn write_json(
                 .get(t.subnet_index)
                 .map(|s| s.label.as_str())
                 .unwrap_or("");
-            serde_json::json!({
+            let mut entry = serde_json::json!({
                 "ip": t.ip.to_string(),
                 "subnet": subnets.get(t.subnet_index).map(|s| s.cidr.as_str()).unwrap_or(""),
                 "label": label,
-            })
+            });
+            if let Some(ref hostname) = t.hostname {
+                entry["hostname"] = serde_json::json!(hostname);
+            }
+            entry
         })
         .collect();
 

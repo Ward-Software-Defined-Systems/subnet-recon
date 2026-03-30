@@ -17,7 +17,7 @@ rate_limit = 0
 # "global" = shuffle all IPs from all subnets together
 # "per_subnet" = shuffle within each subnet, then interleave
 # "none" = sequential order
-randomize = "global"
+randomize = "per_subnet"
 
 # TCP port to probe when method = "tcp"
 tcp_port = 80
@@ -32,14 +32,26 @@ format = "plain"
 # Include unreachable hosts in output
 include_unreachable = false
 
-[[subnets]]
-cidr = "192.168.0.0/16"
-label = "Private Class C"
+[dns]
+# Custom DNS servers for reverse lookups (empty = system default)
+# servers = ["8.8.8.8", "1.1.1.1"]
+servers = ["10.2.10.50", "10.2.10.13"]
+
+# DNS query timeout in milliseconds
+timeout_ms = 3000
+
+#[[subnets]]
+#cidr = "192.168.0.0/16"
+#label = "Private Class C"
+
+#[[subnets]]
+#cidr = "172.16.0.0/12"
+#label = "Private Class B"
+
+#[[subnets]]
+#cidr = "10.0.0.0/8"
+#label = "Private Class A"
 
 [[subnets]]
-cidr = "172.16.0.0/12"
-label = "Private Class B"
-
-[[subnets]]
-cidr = "10.0.0.0/8"
-label = "Private Class A"
+cidr = "10.50.1.0/24"
+label = "City Hall Management"
