@@ -253,47 +253,55 @@ pub fn resolve_hostnames(targets: &mut [ScanTarget], dns_config: &DnsConfig) {
     };
     use hickory_resolver::TokioResolver;
 
-    let mut opts = ResolverOpts::default();
-    opts.timeout = Duration::from_millis(dns_config.timeout_ms);
-
-    let resolver = if dns_config.servers.is_empty() {
-        TokioResolver::builder_tokio()
-            .expect("Failed to create DNS resolver")
-            .with_options(opts)
-            .build()
-    } else {
-        let ips: Vec<IpAddr> = dns_config
-            .servers
-            .iter()
-            .map(|s| s.parse().unwrap()) // validated in config
-            .collect();
-        let name_servers = NameServerConfigGroup::from_ips_clear(&ips, 53, true);
-        use hickory_resolver::name_server::TokioConnectionProvider;
-        let config = ResolverConfig::from_parts(None, vec![], name_servers);
-        TokioResolver::builder_with_config(config, TokioConnectionProvider::default())
-            .with_options(opts)
-            .build()
-    };
-
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to build tokio runtime for DNS");
 
-    let resolver = Arc::new(resolver);
-    let rt = Arc::new(rt);
+    rt.block_on(async {
+        let mut opts = ResolverOpts::default();
+        opts.timeout = Duration::from_millis(dns_config.timeout_ms);
+        opts.attempts = 2;
 
-    targets.par_iter_mut().for_each(|target| {
-        let ip = IpAddr::V4(target.ip);
-        let resolver = Arc::clone(&resolver);
-        let rt = Arc::clone(&rt);
-        target.hostname = rt.block_on(async move {
-            resolver.reverse_lookup(ip).await.ok().and_then(|lookup| {
-                lookup.iter().next().map(|name| {
-                    name.to_string().trim_end_matches('.').to_string()
+        let resolver = if dns_config.servers.is_empty() {
+            TokioResolver::builder_tokio()
+                .expect("Failed to create DNS resolver")
+                .with_options(opts)
+                .build()
+        } else {
+            use hickory_resolver::name_server::TokioConnectionProvider;
+            let ips: Vec<IpAddr> = dns_config
+                .servers
+                .iter()
+                .map(|s| s.parse().unwrap()) // validated in config
+                .collect();
+            let name_servers = NameServerConfigGroup::from_ips_clear(&ips, 53, true);
+            let config = ResolverConfig::from_parts(None, vec![], name_servers);
+            TokioResolver::builder_with_config(config, TokioConnectionProvider::default())
+                .with_options(opts)
+                .build()
+        };
+
+        let resolver = Arc::new(resolver);
+
+        let tasks: Vec<_> = targets
+            .iter()
+            .map(|target| {
+                let resolver = Arc::clone(&resolver);
+                let ip = IpAddr::V4(target.ip);
+                tokio::spawn(async move {
+                    resolver.reverse_lookup(ip).await.ok().and_then(|lookup| {
+                        lookup.iter().next().map(|name| {
+                            name.to_string().trim_end_matches('.').to_string()
+                        })
+                    })
                 })
             })
-        });
+            .collect();
+
+        for (target, task) in targets.iter_mut().zip(tasks) {
+            target.hostname = task.await.ok().flatten();
+        }
     });
 }
 
