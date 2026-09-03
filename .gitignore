@@ -14,6 +14,7 @@
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # IDE
 .idea/
@@ -25,6 +26,9 @@
 # Environment / secrets
 .env
 .env.*
+
+# Config (contains real targets — use config.toml.example as template)
+config.toml
 
 # Output files
 results.txt

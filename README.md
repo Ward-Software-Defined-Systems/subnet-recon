@@ -29,6 +29,17 @@ cargo build --release
 
 The binary is at `./target/release/subnet-recon`.
 
+## Setup
+
+Copy the example config and edit it with your target subnets:
+
+```bash
+cp config.toml.example config.toml
+# Edit config.toml with your subnets, probe method, etc.
+```
+
+`config.toml` is gitignored since it contains environment-specific targets.
+
 ## Usage
 
 ```bash
@@ -69,7 +80,7 @@ sudo ./target/release/subnet-recon -c config.toml -o results.txt -t 8 -v
 
 ## Configuration
 
-All scan parameters are set in a TOML config file. See `config.toml` for a fully commented example.
+All scan parameters are set in a TOML config file. See `config.toml.example` for a fully commented template.
 
 ### `[scan]`
 
@@ -89,6 +100,13 @@ All scan parameters are set in a TOML config file. See `config.toml` for a fully
 | `file` | string | `""` | Output file path. Empty = stdout only. |
 | `format` | `"plain"` \| `"json"` | `"plain"` | Output format. |
 | `include_unreachable` | bool | `false` | Include unreachable hosts in output. |
+
+### `[dns]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `servers` | list of strings | `[]` | DNS server IPs for reverse lookups. Empty = system default. |
+| `timeout_ms` | integer | `3000` | DNS query timeout in milliseconds. |
 
 ### `[[subnets]]`
 
@@ -112,23 +130,24 @@ label = "Private Class A"
 
 ## Output Formats
 
-**Plain** (default) — one IP per line, sorted:
+**Plain** (default) — one IP per line (tab-separated hostname when resolved), sorted:
 
 ```
-10.0.1.5
+10.0.1.5	gateway.local
 10.0.1.23
-192.168.1.1
+192.168.1.1	router.lan
 192.168.1.100
 ```
 
-**JSON** — array of objects with IP, subnet CIDR, and label:
+**JSON** — array of objects with IP, subnet CIDR, label, and hostname (when resolved):
 
 ```json
 [
   {
     "ip": "192.168.1.1",
     "subnet": "192.168.1.0/24",
-    "label": "Office LAN"
+    "label": "Office LAN",
+    "hostname": "router.lan"
   }
 ]
 ```
